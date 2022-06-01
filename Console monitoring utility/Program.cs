@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using System.Data;
 using System.Data.SqlClient;
+using System.Net;
 using System.Net.Mail;
 using System.Text;
 
@@ -11,7 +12,7 @@ var pathParams = "Files/parameters.json";
 var pathResult = "Files/result.json";
 var pathLogger = "Files/log.txt";
 
-if (args.Length > 0)
+if (args.Length > 0) // запуск с параметром
 {
     try
     {
@@ -27,7 +28,7 @@ if (args.Length > 0)
         Console.WriteLine(ex.Message);
     }
 }
-else
+else // запуск без параметров
 {
     var time = $"{DateTime.Now:dd MMMM yyyy HH:mm:ss}";
 
@@ -42,8 +43,42 @@ else
     var statusDb = await CheckConnectionToDB(data!.StringConnection);
     Console.WriteLine(statusDb);
 
+    SendMail();
     await Log();
 
+    void SendMail()
+    {
+        var mail = ""; // почтовый адрес от учетной записи, с которой будет отправлять письмо
+        var password = ""; // пароль от учетной записи почтового сервиса
+
+        try
+        {
+            var fromAdress = new MailAddress(mail, "Утилита тестирования соединения");
+            var toAdress = new MailAddress(""); // кому будет отправлено письмо
+
+            MailMessage message = new(fromAdress, toAdress);
+
+            message.Subject = "Новая проверка соединения";
+            message.Attachments.Add(new Attachment("Files/result.json"));
+
+            var smtpClient = new SmtpClient // клиент для отправки почты
+            {
+                Host = "smtp.gmail.com",
+                Port = 587,
+                EnableSsl = true,
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                UseDefaultCredentials = false,
+                Credentials = new NetworkCredential(mail, password),
+            };
+
+            smtpClient.Send(message);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+    }
+    // логирование результата
     async Task Log()
     {
         var dataJson = new DataJson
@@ -55,9 +90,11 @@ else
 
         var json = JsonConvert.SerializeObject(dataJson);
 
+        // логирование последней проверки в файл result.json
         using (StreamWriter sw = new(pathResult, false))
             await sw.WriteLineAsync(json);
 
+        // логирование в общий файл log.txt
         using (StreamWriter sw = new(pathLogger, true))
         {
             var text = TemplateLog(dataJson);
@@ -65,7 +102,7 @@ else
             await sw.WriteLineAsync(text);
         }
     }
-
+    // проверка доступа к сайтами
     static async Task<List<string>> CheckAvailabilitySites(List<string> sites)
     {
         var checkedList = new List<string>();
@@ -105,7 +142,7 @@ else
 
         return checkedList;
     }
-
+    // проверка соединения с БД
     static async Task<string> CheckConnectionToDB(string stringConn)
     {
         Console.WriteLine($"Соединение с базой данных по адресу '{stringConn}'...\n");
@@ -135,7 +172,7 @@ else
         }
     }
 }
-
+// шаблон для логирования
 static string TemplateLog(DataJson data)
 {
     if (data is null)
