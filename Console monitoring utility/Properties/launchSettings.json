@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Console monitoring utility": {
+      "commandName": "Project",
+      "commandLineArgs": "parameters.json"
+    }
+  }
+}
