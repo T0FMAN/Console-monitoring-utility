@@ -13,10 +13,9 @@ using (StreamReader sr = new(path))
 var data = JsonSerializer.Deserialize<DataJson>(text);
 
 var statusList = await CheckAvailabilitySites(data!.Sites);
-var testConn = await CheckConnectionToDB(data!.StringConnection);
-
 statusList.ForEach(n => Console.WriteLine($"{n}\n"));
-Console.WriteLine(testConn);
+
+CheckConnectionToDB(data!.StringConnection);
 
 static async Task<List<string>> CheckAvailabilitySites(List<string> sites)
 {
@@ -26,49 +25,62 @@ static async Task<List<string>> CheckAvailabilitySites(List<string> sites)
     {
         foreach (var url in sites)
         {
-            using (var response = await client.GetAsync("https://" + url))
+            try
             {
-                var code = (int)response.StatusCode;
-
-                var textResponse = string.Empty;
-
-                switch (code)
+                using (var response = await client.GetAsync("https://" + url))
                 {
-                    case 200:
-                        textResponse = $"Сайт {url} доступен (код 200)";
-                        break;
+                    var code = (int)response.StatusCode;
 
-                    default:
-                        textResponse = $"Ошибка доступа к {url} : Код {code}";
-                        break;
+                    var textResponse = string.Empty;
+
+                    switch (code)
+                    {
+                        case 200:
+                            textResponse = $"Сайт {url} доступен (код 200)";
+                            break;
+
+                        default:
+                            textResponse = $"Ошибка доступа к {url} : Код {code}";
+                            break;
+                    }
+
+                    checkedList.Add(textResponse);
                 }
-
-                checkedList.Add(textResponse);
+            }
+            catch (Exception ex)
+            {
+                checkedList.Add(ex.Message);
             }
         }
     }
     return checkedList;
 }
 
-static async Task<bool> CheckConnectionToDB(string stringConn)
+static async void CheckConnectionToDB(string stringConn)
 {
+    Console.WriteLine($"Соединение с базой данных по адресу '{stringConn}'...\n");
+
     using (var connection = new SqlConnection(stringConn))
     {
         try
         {
-            await connection.OpenAsync();
+            connection.OpenAsync();
 
-            //await Task.Delay(1500);
+            await Task.Delay(2500);
 
-            //if (conn.State == ConnectionState.Open)
-            //    return true;
-            //else throw new Exception();
+            if (connection.State == ConnectionState.Open)
+                Console.WriteLine("Соединение прошло успешно");
+            else
+                Console.WriteLine("Сервер базы данных не отвечает, либо задано неправильное подключение..");
 
-            return true;
         }
-        catch
+        catch (SqlException ex)
         {
-            return false;
+            Console.WriteLine($"Ошибка SQL: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
         }
     }
 }
