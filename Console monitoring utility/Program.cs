@@ -43,10 +43,10 @@ else // запуск без параметров
     var statusDb = await CheckConnectionToDB(data!.StringConnection);
     Console.WriteLine(statusDb);
 
-    SendMail();
     await Log();
+    SendMail();
 
-    void SendMail()
+    static void SendMail()
     {
         var mail = ""; // почтовый адрес от учетной записи, с которой будет отправлять письмо
         var password = ""; // пароль от учетной записи почтового сервиса
@@ -56,9 +56,10 @@ else // запуск без параметров
             var fromAdress = new MailAddress(mail, "Утилита тестирования соединения");
             var toAdress = new MailAddress(""); // кому будет отправлено письмо
 
-            MailMessage message = new(fromAdress, toAdress);
-
-            message.Subject = "Новая проверка соединения";
+            MailMessage message = new(fromAdress, toAdress)
+            {
+                Subject = "Новая проверка соединения"
+            };
             message.Attachments.Add(new Attachment("Files/result.json"));
 
             var smtpClient = new SmtpClient // клиент для отправки почты
@@ -72,6 +73,8 @@ else // запуск без параметров
             };
 
             smtpClient.Send(message);
+
+            Console.WriteLine($"Письмо успешно отправлено на адрес {toAdress.Address}");
         }
         catch (Exception ex)
         {
