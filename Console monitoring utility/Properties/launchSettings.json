@@ -2,7 +2,7 @@
   "profiles": {
     "Console monitoring utility": {
       "commandName": "Project",
-      "commandLineArgs": "parameters.json"
+      "workingDirectory": "C:\\Users\\admin\\source\\repos\\Console monitoring utility\\Console monitoring utility"
     }
   }
 }

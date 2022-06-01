@@ -1,86 +1,151 @@
 ﻿using Console_monitoring_utility;
+using Newtonsoft.Json;
 using System.Data;
 using System.Data.SqlClient;
-using System.Net.NetworkInformation;
-using System.Text.Json;
+using System.Net.Mail;
+using System.Text;
 
 var text = string.Empty;
-var path = args[0];
 
-using (StreamReader sr = new(path))
-    text = await sr.ReadToEndAsync();
+var pathParams = "Files/parameters.json";
+var pathResult = "Files/result.json";
+var pathLogger = "Files/log.txt";
 
-var data = JsonSerializer.Deserialize<DataJson>(text);
-
-var statusList = await CheckAvailabilitySites(data!.Sites);
-statusList.ForEach(n => Console.WriteLine($"{n}\n"));
-
-CheckConnectionToDB(data!.StringConnection);
-
-static async Task<List<string>> CheckAvailabilitySites(List<string> sites)
+if (args.Length > 0)
 {
-    var checkedList = new List<string>();
-
-    using (HttpClient client = new())
+    try
     {
-        foreach (var url in sites)
+        using (StreamReader sr = new(pathResult, Encoding.UTF8))
+            text = await sr.ReadToEndAsync();
+
+        var data = JsonConvert.DeserializeObject<DataJson>(text);
+
+        Console.WriteLine(TemplateLog(data));
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine(ex.Message);
+    }
+}
+else
+{
+    var time = $"{DateTime.Now:dd MMMM yyyy HH:mm:ss}";
+
+    using (StreamReader sr = new(pathParams))
+        text = await sr.ReadToEndAsync();
+
+    var data = JsonConvert.DeserializeObject<DataJson>(text);
+
+    var statusList = await CheckAvailabilitySites(data!.Sites);
+    statusList.ForEach(n => Console.WriteLine(n));
+
+    var statusDb = await CheckConnectionToDB(data!.StringConnection);
+    Console.WriteLine(statusDb);
+
+    await Log();
+
+    async Task Log()
+    {
+        var dataJson = new DataJson
+        {
+            DateTime = time,
+            Sites = statusList,
+            StringConnection = statusDb,
+        };
+
+        var json = JsonConvert.SerializeObject(dataJson);
+
+        using (StreamWriter sw = new(pathResult, false))
+            await sw.WriteLineAsync(json);
+
+        using (StreamWriter sw = new(pathLogger, true))
+        {
+            var text = TemplateLog(dataJson);
+
+            await sw.WriteLineAsync(text);
+        }
+    }
+
+    static async Task<List<string>> CheckAvailabilitySites(List<string> sites)
+    {
+        var checkedList = new List<string>();
+
+        using (HttpClient client = new())
+        {
+            foreach (var url in sites)
+            {
+                try
+                {
+                    using (var response = await client.GetAsync("https://" + url))
+                    {
+                        var code = (int)response.StatusCode;
+
+                        var textResponse = string.Empty;
+
+                        switch (code)
+                        {
+                            case 200:
+                                textResponse = $"Сайт {url} доступен (код 200)\n";
+                                break;
+
+                            default:
+                                textResponse = $"Ошибка доступа к {url} : Код {code}\n";
+                                break;
+                        }
+
+                        checkedList.Add(textResponse);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    checkedList.Add(ex.Message);
+                }
+            }
+        }
+
+        return checkedList;
+    }
+
+    static async Task<string> CheckConnectionToDB(string stringConn)
+    {
+        Console.WriteLine($"Соединение с базой данных по адресу '{stringConn}'...\n");
+
+        using (var connection = new SqlConnection(stringConn))
         {
             try
             {
-                using (var response = await client.GetAsync("https://" + url))
-                {
-                    var code = (int)response.StatusCode;
+                connection.OpenAsync();
 
-                    var textResponse = string.Empty;
+                await Task.Delay(2500);
 
-                    switch (code)
-                    {
-                        case 200:
-                            textResponse = $"Сайт {url} доступен (код 200)";
-                            break;
+                if (connection.State == ConnectionState.Open)
+                    return "Соединение прошло успешно";
+                else
+                    return "Сервер базы данных не отвечает, либо задано неправильное подключение..";
 
-                        default:
-                            textResponse = $"Ошибка доступа к {url} : Код {code}";
-                            break;
-                    }
-
-                    checkedList.Add(textResponse);
-                }
+            }
+            catch (SqlException ex)
+            {
+                return $"Ошибка SQL: {ex.Message}";
             }
             catch (Exception ex)
             {
-                checkedList.Add(ex.Message);
+                return ex.Message;
             }
         }
     }
-    return checkedList;
 }
 
-static async void CheckConnectionToDB(string stringConn)
+static string TemplateLog(DataJson data)
 {
-    Console.WriteLine($"Соединение с базой данных по адресу '{stringConn}'...\n");
+    if (data is null)
+        return "Проверок подключения еще не проводилось..";
 
-    using (var connection = new SqlConnection(stringConn))
-    {
-        try
-        {
-            connection.OpenAsync();
+    var dateTemp = $"Время проверки: {data.DateTime}\n";
+    var siteTemp = $"Результат проверки соединений до сайтов:\n";
+    var dbTemp = $"Результат проверки соединения к базе данных: {data.StringConnection}\n";
 
-            await Task.Delay(2500);
+    data.Sites.ForEach(n => siteTemp += $"{n}\n");
 
-            if (connection.State == ConnectionState.Open)
-                Console.WriteLine("Соединение прошло успешно");
-            else
-                Console.WriteLine("Сервер базы данных не отвечает, либо задано неправильное подключение..");
-
-        }
-        catch (SqlException ex)
-        {
-            Console.WriteLine($"Ошибка SQL: {ex.Message}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex.Message);
-        }
-    }
+    return $"{dateTemp}\n{siteTemp}\n{dbTemp}";
 }

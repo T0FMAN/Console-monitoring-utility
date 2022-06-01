@@ -10,5 +10,6 @@ namespace Console_monitoring_utility
     {
         public string StringConnection { get; set; }
         public List<string> Sites { get; set; }
+        public string DateTime { get; set; }
     }
 }
