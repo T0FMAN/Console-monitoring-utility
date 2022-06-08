@@ -1,1 +1,1 @@
-{"StringConnection":"Соединение прошло успешно","Sites":["Сайт ya.ru доступен (код 200)\n","Сайт google.com доступен (код 200)\n"],"DateTime":"01 июня 2022 20:30:17"}
+{"StringsConnection":["Data Source=DESKTOP-06SPSRL\\SQLEXPRESS;Initial Catalog=testingmodule;Integrated Security=True - Соединение прошло успешно\n"],"Sites":["Сайт https://ya.ru/ доступен (код 200)","Сайт https://www.google.com доступен (код 200)"],"DateTime":"09 июня 2022 02:43:10"}

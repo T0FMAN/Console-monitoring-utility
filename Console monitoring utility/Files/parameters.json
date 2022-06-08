@@ -1,7 +1,9 @@
 {
-  "StringConnection": "Data Source=DESKTOP-06SPSRL\\SQLEXPRESS;Initial Catalog=testingmodule;Integrated Security=True",
+  "StringsConnection": [
+    "Data Source=DESKTOP-06SPSRL\\SQLEXPRESS;Initial Catalog=testingmodule;Integrated Security=True"
+  ],
   "Sites": [
-    "ya.ru",
-    "google.com"
+    "https://ya.ru/",
+    "https://www.google.com"
   ]
 }

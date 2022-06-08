@@ -1,27 +1,31 @@
-﻿using Console_monitoring_utility;
-using Newtonsoft.Json;
-using System.Data;
-using System.Data.SqlClient;
+﻿using Console_monitoring_utility.Data;
+using Console_monitoring_utility.Data.Checks;
+using Console_monitoring_utility.Extensions;
 using System.Net;
 using System.Net.Mail;
-using System.Text;
-
-var text = string.Empty;
 
 var pathParams = "Files/parameters.json";
 var pathResult = "Files/result.json";
 var pathLogger = "Files/log.txt";
+var pathMailer = "Files/mailSettings.json";
 
 if (args.Length > 0) // запуск с параметром
 {
     try
     {
-        using (StreamReader sr = new(pathResult, Encoding.UTF8))
-            text = await sr.ReadToEndAsync();
+        var value = await pathResult.GetDataFile();
 
-        var data = JsonConvert.DeserializeObject<DataJson>(text);
+        if (!value.Item1)
+        {
+            Console.WriteLine(value.Item2);
+            return;
+        }
 
-        Console.WriteLine(TemplateLog(data));
+        var result = value.Item2.Deserialize(ClassType.ParamsCheck) as ParamsCheck;
+
+        var text = result!.TemplateLog(true);
+
+        Console.WriteLine(text);
     }
     catch (Exception ex)
     {
@@ -31,161 +35,68 @@ if (args.Length > 0) // запуск с параметром
 else // запуск без параметров
 {
     var time = $"{DateTime.Now:dd MMMM yyyy HH:mm:ss}";
+    // получение параметров проверки соединений
+    var dataParams = await pathParams.GetDataFile();
 
-    using (StreamReader sr = new(pathParams))
-        text = await sr.ReadToEndAsync();
-
-    var data = JsonConvert.DeserializeObject<DataJson>(text);
-
-    var statusList = await CheckAvailabilitySites(data!.Sites);
-    statusList.ForEach(n => Console.WriteLine(n));
-
-    var statusDb = await CheckConnectionToDB(data!.StringConnection);
-    Console.WriteLine(statusDb);
-
-    await Log();
-    SendMail();
-
-    static void SendMail()
+    if (!dataParams.Item1)
     {
-        var mail = ""; // почтовый адрес от учетной записи, с которой будет отправлять письмо
-        var password = ""; // пароль от учетной записи почтового сервиса
-
-        try
-        {
-            var fromAdress = new MailAddress(mail, "Утилита тестирования соединения");
-            var toAdress = new MailAddress(""); // кому будет отправлено письмо
-
-            MailMessage message = new(fromAdress, toAdress)
-            {
-                Subject = "Новая проверка соединения"
-            };
-            message.Attachments.Add(new Attachment("Files/result.json"));
-
-            var smtpClient = new SmtpClient // клиент для отправки почты
-            {
-                Host = "smtp.gmail.com",
-                Port = 587,
-                EnableSsl = true,
-                DeliveryMethod = SmtpDeliveryMethod.Network,
-                UseDefaultCredentials = false,
-                Credentials = new NetworkCredential(mail, password),
-            };
-
-            smtpClient.Send(message);
-
-            Console.WriteLine($"Письмо успешно отправлено на адрес {toAdress.Address}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex.Message);
-        }
+        Console.WriteLine(dataParams.Item2);
+        return;
     }
-    // логирование результата
-    async Task Log()
+    // десереализация параметров в класс
+    var parameters = dataParams.Item2.Deserialize(ClassType.ParamsCheck) as ParamsCheck;
+
+    var sites = parameters!.Sites;
+    var stringsConn = parameters!.StringsConnection;
+
+    var checkDb = new CheckDbs();
+    await checkDb.CheckAvailability(stringsConn); // проверка соединений до БД
+
+    var checkSites = new CheckSites();
+    await checkSites.CheckAvailability(sites); // проверка соединений до сайтов
+
+    var data = new ParamsCheck
     {
-        var dataJson = new DataJson
-        {
-            DateTime = time,
-            Sites = statusList,
-            StringConnection = statusDb,
-        };
+        DateTime = time,
+        Sites = checkSites.Logger,
+        StringsConnection = checkDb.Logger,
+    };
 
-        var json = JsonConvert.SerializeObject(dataJson);
+    var text = data.TemplateLog(); // шаблон для логирования
+    var json = data.Serialize(); // текст в формат json для записи в файл
 
-        // логирование последней проверки в файл result.json
-        using (StreamWriter sw = new(pathResult, false))
-            await sw.WriteLineAsync(json);
+    var log = await pathLogger.WriteDataFile(text, true); // запись файла в общие результаты
+    Console.WriteLine("\n" + log);
 
-        // логирование в общий файл log.txt
-        using (StreamWriter sw = new(pathLogger, true))
-        {
-            var text = TemplateLog(dataJson);
+    var res = await pathResult.WriteDataFile(json, false); // запись в файл с последней проверкой
+    Console.WriteLine("\n" + res);
 
-            await sw.WriteLineAsync(text);
-        }
-    }
-    // проверка доступа к сайтами
-    static async Task<List<string>> CheckAvailabilitySites(List<string> sites)
+    var mailData = await pathMailer.GetDataFile(); // получение текста файла настроек почты
+
+    if (!mailData.Item1)
     {
-        var checkedList = new List<string>();
-
-        using (HttpClient client = new())
-        {
-            foreach (var url in sites)
-            {
-                try
-                {
-                    using (var response = await client.GetAsync("https://" + url))
-                    {
-                        var code = (int)response.StatusCode;
-
-                        var textResponse = string.Empty;
-
-                        switch (code)
-                        {
-                            case 200:
-                                textResponse = $"Сайт {url} доступен (код 200)\n";
-                                break;
-
-                            default:
-                                textResponse = $"Ошибка доступа к {url} : Код {code}\n";
-                                break;
-                        }
-
-                        checkedList.Add(textResponse);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    checkedList.Add(ex.Message);
-                }
-            }
-        }
-
-        return checkedList;
+        Console.WriteLine(mailData.Item2);
+        return;
     }
-    // проверка соединения с БД
-    static async Task<string> CheckConnectionToDB(string stringConn)
+
+    try
     {
-        Console.WriteLine($"Соединение с базой данных по адресу '{stringConn}'...\n");
-
-        using (var connection = new SqlConnection(stringConn))
+        // получение данных почтового клиента, адресатов из файла
+        var mail = mailData.Item2.Deserialize(ClassType.Mailer) as Mailer;
+        // добавление файла во вложения письма
+        if (mail.Message != null)
+            mail.Message.Attachments.Add(new Attachment(pathResult));
+        else
         {
-            try
-            {
-                connection.OpenAsync();
-
-                await Task.Delay(2500);
-
-                if (connection.State == ConnectionState.Open)
-                    return "Соединение прошло успешно";
-                else
-                    return "Сервер базы данных не отвечает, либо задано неправильное подключение..";
-
-            }
-            catch (SqlException ex)
-            {
-                return $"Ошибка SQL: {ex.Message}";
-            }
-            catch (Exception ex)
-            {
-                return ex.Message;
-            }
+            Console.WriteLine("Проблемы с созданием сообщения..");
+            return;
         }
+        mail.SmtpClient.Send(mail.Message);
+
+        Console.WriteLine($"Письмо успешно разослано адресатам ({mail.Message.To.Count}x)");
     }
-}
-// шаблон для логирования
-static string TemplateLog(DataJson data)
-{
-    if (data is null)
-        return "Проверок подключения еще не проводилось..";
-
-    var dateTemp = $"Время проверки: {data.DateTime}\n";
-    var siteTemp = $"Результат проверки соединений до сайтов:\n";
-    var dbTemp = $"Результат проверки соединения к базе данных: {data.StringConnection}\n";
-
-    data.Sites.ForEach(n => siteTemp += $"{n}\n");
-
-    return $"{dateTemp}\n{siteTemp}\n{dbTemp}";
+    catch (Exception ex)
+    {
+        Console.WriteLine(ex.Message);
+    }
 }

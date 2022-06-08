@@ -1,0 +1,13 @@
+{
+  "FromAddress": "user@test.com",
+  "DisplayName": "Утилита тестирования соединения",
+  "Password": "password",
+  "ToAddress": [
+    "admin@hub.io",
+    "bruh@meduza.de"
+  ],
+  "Subject": "Новая проверка соединения",
+  "Host": "smtp.gmail.com",
+  "Port": 587,
+  "UseSSL": true
+}
